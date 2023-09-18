@@ -270,7 +270,8 @@ void setup() {
 
 
   ".L%=send_data_setup:\n"
-  // total of 16 instructions, get ready for the read
+  // total of 16 instructions, get ready for the read,
+  // r19 needs to be get new data condtions, r22 needs to be len
   // r20 is low, 21 is high, x is inport console
     // need to set port as an outport
     "mov r26,r0\n" // (1) x
@@ -292,102 +293,83 @@ void setup() {
   // end code hide
 
     ".L%=send_data:\n" // start the function for readint he stream TODO: implementation
-  // inputs: r19 read_new, r20: low, r20: high, X = outport, z = buffer. port set to input
-            "mov %[bytecount], %[len]\n"
+  // inputs: r19 read_new, r20: low, r21: high, r22 = len, X = outport, z = buffer. port set to input
+    // we have r23, 24, 25 to use
+    // let r23 be the bitcount, 24 be the byte
 
-        // This label starts the outer loop, which sends a single byte
-        ".L%=_byte_loop:\n"
-        "ld %[data], %a[buff]+\n" // (2) load the next byte and increment byte pointer
-        "ldi %[bitCount],0x08\n" // (1) set bitcount to 8 bits
-        // This label starts the inner loop, which sends a single bit
-        ".L%=_bit_loop:\n"
-        // we want low for 1us to start sending a bit
-        "st %a[outPort],%[low]\n" // (2) pull the line low
+    ".L%=send_data_byte_loop:\n"
 
-        // line needs to stay low for 1us
-        // 16 cycles, 2 from st above, 1 from lsl below and 2 from brcc, 
-        "nop\nnop\nnop\nnop\nnop\n" //(5)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\n" //(1) (11)
+    "ld r24, Z+\n" // (2) load the next byte and increment byte pointer
+    "ldi r23,0x08\n" // (1) set bitcount to 8 bits
 
-        "lsl %[data]\n" // (1) shift left. MSB goes into carry bit of status reg
-        // brcc branches if the carry bit (output from previous line) is a 0
-        "brcc .L%=_zero_bit\n" // (1/2) branch if carry is cleared
-        "nop\n" // (1)
+    ".L%=send_data_bit_loop:\n"
+    "st X,r20\n" // (2) pull the line low
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (7)
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (12)
+    "nop\n" //(1) (13)
+    "lsl r24\n" // (1) (14) shift left. MSB goes into carry bit of status reg
+    // brcc branches if the carry bit (output from previous line) is a 0
+    "brcc .L%=send_data_zero_bit\n" // (1/2) branch if carry is cleared
+    "nop\n" // (1) (16)
+    "st X,r21\n" // (2) set the line high again
+    "rjmp .L%=_finish_bit\n" // (2) jumps to end of the bit
 
-        "st %a[outPort],%[high]\n" // (2) set the line high again
-        // Now stay high for 2us = 30 cycles
-        "nop\nnop\nnop\nnop\nnop\n" //(5) 
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (25)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (30)
-        "rjmp .L%=_finish_bit\n" // (2) jumps to end of the bit
-
-        
-        // this block is the timing for a 0 bit (3us low, 1us high)
-        ".L%=_zero_bit:\n"
-        // Need to go high in 2us, (32 cycles)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) 
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (25)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (30)
-        "nop\nnop\n" // (2) (32)
-
-        
-        // The two branches meet up here.
-        ".L%=_finish_bit:\n"
-
-        "st %a[outPort],%[high]\n" // (2) set the line high
-
-        // logic about ending the bit
-        "dec %[bitCount]\n" // (1) subtract 1 from our bit counter
-        "breq .L%=_load_next_byte\n" // (1/2) branch if we've sent all the bits of this byte
-
-        // 16 cycles for the high, - 2 for the st, -2 for the logic - 2 for the jump
-        "nop\nnop\nnop\nnop\nnop\n" //(5) 
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "rjmp .L%=_bit_loop\n" // (2)
+    ".L%=send_data_zero_bit:\n" 
+    // leave low, need to wait 4 cycles to sync up
+    "nop\nnop\nnop\nnop\n" //(4)
 
 
-        // we are 5 cycles into the high bit
-        ".L%=_load_next_byte:\n"
-        "dec %[bytecount]\n" // (1) len--
-        "breq .L%=_loop_exit\n" // (1/2) if the byte counter is 0, exit
-        // needs to go high after 1us or 16 cycles
-        // 16 - 7 (above) - 2 (the jump itself) - 3 (after jump) = 4
-        "nop\nnop\nnop\nnop\n" //(4) 
-        "rjmp .L%=_byte_loop\n" // (2)
+    ".L%=_finish_bit:\n" 
+    // wait 28 cycles for 2us
+    "nop\nnop\nnop\nnop\nnop\n" //(5) 
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (25)
+    "nop\nnop\nnop\n" //(3) (28)
 
+    "st X,r21\n" // (2) set the line high
 
-        // Loop exit
-        ".L%=_loop_exit:\n"
+    // logic about ending the bit
+    "dec r23\n" // (1) subtract 1 from our bit counter
+    "breq .L%=send_data_load_next_byte\n" // (1/2) branch if we've sent all the bits of this byte
 
-        // final task: send the stop bit, which is a 1 (1us low 3us high)
-        // the line goes low in:
-        // 16 - 8 (above since line went high) = 8 cycles
-        "nop\nnop\nnop\nnop\nnop\n" //(5) 
-        "nop\nnop\nnop\n" //(3) (8)
+    // 16 cycles for the high, - 2 for the st, -2 for the logic - 2 for the jump
+    "nop\nnop\nnop\nnop\nnop\n" //(5) 
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+    "rjmp .L%=send_data_bit_loop\n" // (2)
 
-        "st %a[outPort],%[low]\n" // (2) pull the line low
-        // stay low for 1us
-        // 16 - 2 (below st) = 14
-        "nop\nnop\nnop\nnop\nnop\n" //(5) 
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\nnop\nnop\nnop\n" //(4) (14)
+    ".L%=send_data_load_next_byte:\n"
+    // we are 5 cycles into the high bit
+    "dec r22\n" // (1) len--
+    "breq .L%=send_data_loop_exit\n" // (1/2) if the byte counter is 0, exit
+    // needs to go high after 1us or 16 cycles
+    // 16 - 7 (above) - 2 (the jump itself) - 3 (after jump) = 4
+    "nop\nnop\nnop\nnop\n" //(4) 
+    "rjmp .L%=send_data_byte_loop\n" // (2)
 
-        "st %a[outPort],%[high]\n" // (2) set the line high again
-    
-    // need to end on high
-  // hide TODO: clobbers
+    ".L%=send_data_loop_exit:\n"
+    // send the stop bit, which is a 1 (1us low 3us high)
+    // the line goes low in: 16 - 8 (above since line went high) = 8 cycles
+    "nop\nnop\nnop\nnop\nnop\n" //(5) 
+    "nop\nnop\nnop\n" //(3) (8)
+
+    "st X,r20\n" // (2) pull the line low
+    // stay low for 1us: 16 - 2 (below st) = 14
+    "nop\nnop\nnop\nnop\nnop\n" //(5) 
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+    "nop\nnop\nnop\nnop\n" //(4) (14)
+    "st X,r21\n" // (2) set the line high again
+    //TODO: logic for where we jump to next
+    "andi r19, 0x01\n"
+    "breq " // jump if the result from the and was 0
+    "rjmp " // TODO
+  // Clobbers: r23, r24
 
 
     ".L%=read_data:\n"
-  // input: 
-      // we need to set the port to input (9)
+  // input: r19, len of data to read
+    // we need to set the port to input (9)
     "mov r26,r0\n" // (1) x
     "mov r27,r1\n" // (1) set the register modeport
     "mov r16,r25\n" // (1) set the register 25 to be the bitmask for console
