@@ -293,9 +293,95 @@ void setup() {
 
     ".L%=send_data:\n" // start the function for readint he stream TODO: implementation
   // inputs: r19 read_new, r20: low, r20: high, X = outport, z = buffer. port set to input
+            "mov %[bytecount], %[len]\n"
 
+        // This label starts the outer loop, which sends a single byte
+        ".L%=_byte_loop:\n"
+        "ld %[data], %a[buff]+\n" // (2) load the next byte and increment byte pointer
+        "ldi %[bitCount],0x08\n" // (1) set bitcount to 8 bits
+        // This label starts the inner loop, which sends a single bit
+        ".L%=_bit_loop:\n"
+        // we want low for 1us to start sending a bit
+        "st %a[outPort],%[low]\n" // (2) pull the line low
+
+        // line needs to stay low for 1us
+        // 16 cycles, 2 from st above, 1 from lsl below and 2 from brcc, 
+        "nop\nnop\nnop\nnop\nnop\n" //(5)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\n" //(1) (11)
+
+        "lsl %[data]\n" // (1) shift left. MSB goes into carry bit of status reg
+        // brcc branches if the carry bit (output from previous line) is a 0
+        "brcc .L%=_zero_bit\n" // (1/2) branch if carry is cleared
+        "nop\n" // (1)
+
+        "st %a[outPort],%[high]\n" // (2) set the line high again
+        // Now stay high for 2us = 30 cycles
+        "nop\nnop\nnop\nnop\nnop\n" //(5) 
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (25)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (30)
+        "rjmp .L%=_finish_bit\n" // (2) jumps to end of the bit
+
+        
+        // this block is the timing for a 0 bit (3us low, 1us high)
+        ".L%=_zero_bit:\n"
+        // Need to go high in 2us, (32 cycles)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) 
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (25)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (30)
+        "nop\nnop\n" // (2) (32)
+
+        
+        // The two branches meet up here.
+        ".L%=_finish_bit:\n"
+
+        "st %a[outPort],%[high]\n" // (2) set the line high
+
+        // logic about ending the bit
+        "dec %[bitCount]\n" // (1) subtract 1 from our bit counter
+        "breq .L%=_load_next_byte\n" // (1/2) branch if we've sent all the bits of this byte
+
+        // 16 cycles for the high, - 2 for the st, -2 for the logic - 2 for the jump
+        "nop\nnop\nnop\nnop\nnop\n" //(5) 
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "rjmp .L%=_bit_loop\n" // (2)
+
+
+        // we are 5 cycles into the high bit
+        ".L%=_load_next_byte:\n"
+        "dec %[bytecount]\n" // (1) len--
+        "breq .L%=_loop_exit\n" // (1/2) if the byte counter is 0, exit
+        // needs to go high after 1us or 16 cycles
+        // 16 - 7 (above) - 2 (the jump itself) - 3 (after jump) = 4
+        "nop\nnop\nnop\nnop\n" //(4) 
+        "rjmp .L%=_byte_loop\n" // (2)
+
+
+        // Loop exit
+        ".L%=_loop_exit:\n"
+
+        // final task: send the stop bit, which is a 1 (1us low 3us high)
+        // the line goes low in:
+        // 16 - 8 (above since line went high) = 8 cycles
+        "nop\nnop\nnop\nnop\nnop\n" //(5) 
+        "nop\nnop\nnop\n" //(3) (8)
+
+        "st %a[outPort],%[low]\n" // (2) pull the line low
+        // stay low for 1us
+        // 16 - 2 (below st) = 14
+        "nop\nnop\nnop\nnop\nnop\n" //(5) 
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\nnop\nnop\nnop\n" //(4) (14)
+
+        "st %a[outPort],%[high]\n" // (2) set the line high again
     
-    // set the port mode to input
+    // need to end on high
   // hide TODO: clobbers
 
 
@@ -314,6 +400,89 @@ void setup() {
     "mov r26, r4\n" // (1) X 
     "mov r27, r5\n" // (1) load the register for inport console
 
+
+     "ldi %[waitloop1],0x00\n" // (1)
+        "ldi %[receivedBytes],0x00\n" // (1) yet to get a byte
+        "ldi %[bitCount],0x08\n" // (1) set bitcount to 8 bits
+
+
+        ".L%=_externel_loop:\n"
+        // start the internal loop to loop 256 times
+        //"ldi %[data],0x00\n" // (1)
+
+        ".L%=_internel_loop1:\n"
+        "ld %[inputVal], %a[inPortConsole]\n" // (2) reads pin then saves to input value 
+        "and %[inputVal], %[bitMaskConsole]\n" // (1) compares the input value to the bitmask
+        "breq .L%=_found_low\n" // (1/2) jumps if the value is 0 from the and (the result was low)
+        //"dec %[data]\n" // (1) decrease loop iterations by 1
+        //"brne .L%=_internel_loop1\n" // (1/2) loop if the counter isn't 0
+        "rjmp .L%=_internel_loop1\n"
+
+        // checks the pin every 7 cycles
+        ".L%=_wait_for_low:\n"
+        "ld %[inputVal], %a[inPortConsole]\n" // (2) reads pin then saves to input value 
+        "and %[inputVal], %[bitMaskConsole]\n" // (1) compares the input value to the bitmask
+        "breq .L%=_found_low\n" // (1/2) jumps if the value is 0 from the and (the result was low)
+        "dec %[waitloop1]\n" // (1) 
+        "brne .L%=_wait_for_low\n" // (1/2) loop if the counter isn't 0
+        // timeout if the loop did not find low
+        //"ldi %[receivedBytes],0x40\n"
+        "rjmp .L%=_program_exit\n" // (2) jump to end
+        
+        // logic for identifying the data 
+        // worst case it has been 8 instructions since last pin check and it takes 5 instrctions to jump here
+        // this means that between 3 instrctions and 11 instructions left in the start of this bit
+        ".L%=_found_low:\n"
+        // to check in the most optimal way we want to check in the middle of the 32 bits of data, 
+        // this will be between the 12 and the 20th bit. 
+        // if the 3 left goes to the 20 then we need 23 nops, meaning that the one with 11 left checks on the 12th cycle as e wanted. 
+        "nop\nnop\nnop\nnop\nnop\n" //(5)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
+        "nop\n" //(1) (21)
+        "lsl %[data]\n" // (1) moves data recived left so the new data can fit in 
+        "ldi %[waitloop1],%[timeout_length]\n" // (1) (23) set the timeout to 16 loops, if it has not gone high then there is error, do it in advance
+
+        // logic to check what the bit is. 
+        ".L%=_read_bit:\n"
+        "ld %[inputVal], %a[inPortConsole]\n" // (2) reads pin then saves to input value (happens before the 2 cycles)
+        "and %[inputVal], %[bitMaskConsole]\n" // (1) compares the input value to the bitmask
+        "breq .L%=_decrement_bit\n" // (1/2) jumps if the value is 0 from the and (the result was low)
+        "sbr %[data],0x01\n" // (1) sets the first bit in the data to be a 1
+        ".L%=_decrement_bit:\n"
+        "dec %[bitCount]\n" // (1) decrement 1 from our bit counter
+        "brne .L%=_wait_for_high\n" // (1/2) branch if we've not received the full byte
+        
+        "inc %[receivedBytes]\n" // (1) increase byte count
+        "ldi %[bitCount],0x08\n" // (1) set bitcount to 8 bits
+        "st %a[buff]+,%[data]\n" // (2) save %[data] back to memory and increment byte pointer
+        "cp %[len],%[receivedBytes]\n" // (1) %[len] == %[receivedBytes] ?
+        "breq .L%=_stop_bit\n" // (1/2) jump to w
+        
+        ".L%=_wait_for_high:\n"
+        "ld %[inputVal], %a[inPortConsole]\n" // (2) read the pin
+        "and %[inputVal], %[bitMaskConsole]\n" // (1) compare pinstate with bitmask
+        "brne .L%=_wait_for_low\n" // (1/2) if the line is high then jump
+        "dec %[waitloop1]\n" // (1) decrease timeout by 1
+        "brne .L%=_wait_for_high\n" // (1/2) loop if the counter isn't 0
+        //"ldi %[receivedBytes],0x50\n"
+        ".L%=_stop_bit:\n"
+        // want to wait for the last bit, to do this we get here with at most 21 bits in this byte , 
+        "nop\nnop\nnop\nnop\nnop\n" //(5)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
+        "nop\n" //(3) (21)
+        // now we want to wait the 16 cycles for the last low to end
+        "nop\nnop\nnop\nnop\nnop\n" //(5)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
+        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
+        "nop\n" //(3) (16)
+        
+        // should be high or turning high rn, 
+        // we return the number of bits filled 
+        ".L%=_program_exit:\n"
 
 
   // clobbers
