@@ -74,7 +74,7 @@ void setup() {
 
   // we dont want to make any vairables here since we going to write everything in asm 
   // we only compile this way since i dont know how to get the memory adress of the ports in asm
-  asm volatile (
+  asm volatile ( // initalise the portode to input and the port status to high
     "; main program\n"
     // to initalise we want to set the gamecube port to input 
   
@@ -107,20 +107,22 @@ void setup() {
     "ldi r19, 0x08\n"
     "rjmp .L%=read_stream_ensure_read\n"
 
-  // read and send loop: no inputs
-    ".L%=read_console_loop:\n"
-    // first thing to do is to read data
+    // read and send loop: no inputs
+    ".L%=read_console_loop:\n" // todo: ensure that the portmode is set when entering this function
+  // inputs nothing
 
-    
+
+    // set up the data we need to access
     "ldi r19, 0x03\n" // max command length is 3
     "mov r26,r4\n" // (1) x
-    "mov r27,r5\n" // (1) set the register inport console
-    "mov r30, r8\n" // z 
-    "mov r31, r9\n" // load the register for command
+    "mov r27,r5\n" // (1) set the register inport console 
+    "mov r30, r8\n" // (1) z 
+    "mov r31, r9\n" // (1) load the register for command
 
     "ldi r24,0x00\n" // yet to get a byte
     "ldi r23,0x08\n" // 8 bits to read
     
+    // start the loop
     ".L%=read_init_loop:\n" // no timeout since if we dont get a console comand then nothing else to do
     "ld r25, X\n" // (2) reads pin then saves to input value 
     "and r25, r16\n" // (1) compares the input value to the bitmask
@@ -128,7 +130,7 @@ void setup() {
     "rjmp .L%=read_init_loop\n" // (2)
 
 
-
+    // in loop (uses timeouts)
     ".L%=read_wait_for_low:\n"
     "ld r25, x\n" // (2) reads pin then saves to input value 
     "and r25, r16\n" // (1) compares the input value to the bitmask
@@ -171,12 +173,13 @@ void setup() {
     "brne .L%=read_wait_for_low\n" // (1/2) if the line is high then jump
     "dec r22\n" // (1) decrease timeout by 1
     "brne .L%=read_wait_for_high\n" // (1/2) loop if the counter isn't 0
-    //"ldi %[receivedBytes],0x50\n"
     ".L%=read_stop_bit:\n"
     // want to wait for the last bit, to do this we get here with at most 21 bits in this byte
-    // need to do logic for command type
+    // TODO: need to do logic for command type
 
-    // we have to use more then 37 instructions to modify the data report
+    // we have to use more then 37 instructions to modify the data report, after that the gc will open the port to start reading
+    // may be smart to use 16 more instructions to gove 1us for the gc to open the port
+
     // start by loading the buffer into the 
     "mov r30, r8\n" // (1) z 
     "mov r31, r9\n" // (1) load the register for command
@@ -189,6 +192,9 @@ void setup() {
     "mov r30, r14\n" // (1) Z 
     "mov r31, r15\n" // (1) load the register for command
 
+    // tho this is not always needed it is here anyway to wast time for the one case that it is not needed 
+
+    // TODO: need to check that these are incrementing to the correct registers
     // we need to modify at least [4] (in the x) and [5] in the Z
     "ld r25, Z+\n" // (2) Z = Z[1]
     "ld r25, Z+\n" // (2) Z = Z[2]
@@ -208,28 +214,17 @@ void setup() {
     "cpi r19,0x01\n" // (1) comand == 1 ?
     "breq .L%=read_format_one\n" // (1/2) jump if true
 
-
-    // set the x regiuster to be the buffer
-    "mov r30, r14\n" // (1) z 
-    "mov r31, r15\n" // (1) load the register for command
-
-    "cp %[len],%[receivedBytes]\n" // (1) %[len] == %[receivedBytes] ?
-    "breq .L%=_stop_bit\n" // (1/2) jump if true
-
-
-    "mov r26,r6\n" // (1) x
-    "mov r27,r7\n" // (1) set the register modeport
-
-    
+    // TODO: logic for other command types
 
 
 
     ".L%=read_no_change:\n" // we have 31/37 cpu cycles done
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
+    "ldi r19, 0x08\n" // (1) logic for other data types
     // set the data buffer
     "mov r30,r14\n" // (1) Z
     "mov r31,r15\n" // (1) set as the data buffer
-    "rjmp .L%=send_data_setup\n"
+    "rjmp .L%=send_data_setup\n" // (2) 37/37 cycles (perfect and no nops :D)
 
     ".L%=read_format_one:\n" // we have 31/37 cpu cycles done
     "ld r25, X\n" // (2) r25 = data[4]
@@ -239,9 +234,15 @@ void setup() {
     "lsr r25\n" // (1) shift right by 1 [3]
     "lsr r25\n" // (1) shift right by 1 [4]
     "andi r24, 0xF0\n" // (1) limit data[5] to be only the top 4 bits
-    "or r25, r24\n"
+    "or r25, r24\n" // (1) top for bytes of buffer[5] then top 4 bytes of buffer[4] (ik its weird, just going of what i can see in nikehood library)
+    "st X+, r25\n" // store in X[4] and incrmeent X to buffer[5]
+    "ld r25, Z+\n" // (2) r24 = data[6], Z = data[7]
+    "ld r24, Z\n" // (2) r25 = data[7]
+    // TODO: consolt already implemented shit (thats not in asm)
+    
 
-    // set in X, increment X
+
+    // TODO: inplement sudocode
     // copy Z to 25, increment Z
     // set X to 25, increment x
     // copy Z to 25, increment Z
@@ -251,14 +252,13 @@ void setup() {
 
 
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
-    // set the data buffer
+    "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "mov r30,r14\n" // (1) Z
     "mov r31,r15\n" // (1) set as the data buffer
     "rjmp .L%=send_data_setup\n"
 
   
 
-    // need to load X as the inport, Z as the buffer to send
 
     // should be high or turning high rn, 
     // we return the number of bits filled 
@@ -269,7 +269,7 @@ void setup() {
   
 
 
-  ".L%=send_data_setup:\n"
+    ".L%=send_data_setup:\n"
   // total of 16 instructions, get ready for the read,
   // r19 needs to be get new data condtions, r22 needs to be len
   // r20 is low, 21 is high, x is inport console
@@ -283,7 +283,7 @@ void setup() {
     // need to store low in 20
     "mov r26,r6\n" // (1) x
     "mov r27,r7\n" // (1) set as the outport console
-    "ld r20, X\n" // (2) load portmode into r25
+    "ld r20, X\n" // (2) load portmode into r20
     "com r20\n" // (1) bitwise invers of bitmask
     "and r20, r16\n" // (1) r20 is the port low 
 
@@ -292,7 +292,7 @@ void setup() {
     "or r21, r16\n" // (1) r21 is the port high
   // end code hide
 
-    ".L%=send_data:\n" // start the function for readint he stream TODO: implementation
+    ".L%=send_data:\n" //  TODO: end
   // inputs: r19 read_new, r20: low, r21: high, r22 = len, X = outport, z = buffer. port set to input
     // we have r23, 24, 25 to use
     // let r23 be the bitcount, 24 be the byte
@@ -351,28 +351,48 @@ void setup() {
     ".L%=send_data_loop_exit:\n"
     // send the stop bit, which is a 1 (1us low 3us high)
     // the line goes low in: 16 - 8 (above since line went high) = 8 cycles
-    "nop\nnop\nnop\nnop\nnop\n" //(5) 
-    "nop\nnop\nnop\n" //(3) (8)
 
+    // work out the new portmode to set after the it goes high 
+    // the z register is not in use anymore
+    "mov r30,r0\n" // (1) x
+    "mov r31,r1\n" // (1) set the register modeport
+    "ld r25, Z\n" // (2) load portmode into r25
+    "mov r16, r24" // (1) 
+    "com r24\n" // (1)
+    "and r25, r24\n" // (1) determin the new portmode
+    "nop\n" // (1) 8/8 nops
     "st X,r20\n" // (2) pull the line low
     // stay low for 1us: 16 - 2 (below st) = 14
-    "nop\nnop\nnop\nnop\nnop\n" //(5) 
+    
+    "nop\nnop\nnop\nnop\nnop\n" //(5) (5)
     "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-    "nop\nnop\nnop\nnop\n" //(4) (14)
+    "cpi r19, 0x01\n" // (1) is r19 == 0x01
+    "breq .L%=send_data_prep_read_stream\n" // (1/2) jump if true (reads new data for the command) TODO: look at inputs
+    "nop\nnop\n" //(2) (14)
     "st X,r21\n" // (2) set the line high again
-    //TODO: logic for where we jump to next
-    "andi r19, 0x01\n"
-    "breq " // jump if the result from the and was 0
-    "rjmp " // TODO
-  // Clobbers: r23, r24
+    "st Z,r25\n" // (2) set the portmode to input    
+    "rjmp read_console_loop\n" // TODO
+
+    ".L%=send_data_prep_read_stream:\n"
+    "ldi r19, 0x08\n" // (1) set the len of the data to read to be 1
+    "st X,r21\n" // (2) set the line high again
+    "st Z,r25\n" // (2) set the portmode to input
+    "mov r26, 6\n" // (1) X
+    "mov r27, 7\n" // (1) set x as the in port for comm
+    "mov r30, r14\n" // (1) Z
+    "mov r31, r15\n" // (1) set the z as the buffer poiter
+    "rjmp read_stream\n"
+    // sets r19 = len, X = inport comm, Z = buffer
+  // Clobbers: r23, r24, r25
 
 
-    ".L%=read_data:\n"
+
+    ".L%=read_data:\n" //TODO: convert into asm with registers not names
   // input: r19, len of data to read
     // we need to set the port to input (9)
     "mov r26,r0\n" // (1) x
     "mov r27,r1\n" // (1) set the register modeport
-    "mov r16,r25\n" // (1) set the register 25 to be the bitmask for console
+    "mov r25,r16\n" // (1) set the register 25 to be the bitmask for console
     "com r25\n" // (1) bitwise invers of bitmask
     "ld r24, X\n" // (2) load x into r24
     "and r25, r24\n" // (1) determin the new portmode
@@ -471,7 +491,7 @@ void setup() {
 
 
 
-    ".L%=read_stream_ensure_read:\n" // start the function for readint he stream
+    ".L%=read_stream_ensure_read:\n"
   // read stream data, needs r19 as length, X as the inport, Z as the buffer
     // **logic to sunc up with the start of the data, not using timeouts**
     // used when there is not time sensitive code running
@@ -491,10 +511,8 @@ void setup() {
     "rjmp .L%=read_stream_init_wait_high_loop_e\n"
   // clobbers
 
-
-
     ".L%=read_stream:\n" // start the function for readint he stream
-  // Inputs:
+  // Inputs: r19 = len, X = inport, Z = buffer
     "ldi r24,0x64\n" // (1)
 
     // **logic to sunc up with the start of the data**
