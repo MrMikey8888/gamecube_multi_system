@@ -108,8 +108,14 @@ void setup() {
     "rjmp .L%=read_stream_ensure_read\n"
 
     // read and send loop: no inputs
-    ".L%=read_console_loop:\n" // todo: ensure that the portmode is set when entering this function
+    ".L%=read_console_loop:\n" 
   // inputs nothing
+    // r19 is max len
+    // r21 is data
+    // r22 is the loop timeout
+    // r23 is bitcount
+    // r24 is bytecount
+    // r25 is temp reg
 
 
     // set up the data we need to access
@@ -129,10 +135,9 @@ void setup() {
     "breq .L%=read_found_low\n" // (1/2) jumps if the value is 0 from the and (the result was low)
     "rjmp .L%=read_init_loop\n" // (2)
 
-
     // in loop (uses timeouts)
     ".L%=read_wait_for_low:\n"
-    "ld r25, x\n" // (2) reads pin then saves to input value 
+    "ld r25, X\n" // (2) reads pin then saves to input value 
     "and r25, r16\n" // (1) compares the input value to the bitmask
     "breq .L%=read_found_low\n" // (1/2) jumps if the value is 0 from the and (the result was low)
     "dec r22\n" // (1) 
@@ -152,7 +157,7 @@ void setup() {
 
 
     // logic to check what the bit is. 
-    ".L%=read_read_bit:\n"
+    ".L%=read_read_bit:\n" // not used
     "ld r25, X\n" // (2) reads pin then saves to input value (happens before the 2 cycles)
     "and r25, r16\n" // (1) compares the input value to the bitmask
     "breq .L%=read_decrement_bit\n" // (1/2) jumps if the value is 0 from the and (the result was low)
@@ -163,8 +168,8 @@ void setup() {
 
     "inc r24\n" // (1) increase byte count
     "ldi r23,0x08\n" // (1) set bitcount to 8 bits
-    "st Z+,r21\n" // (2) save %[data] back to memory and increment byte pointer
-    "cp r19,r24\n" // (1) %[len] == %[receivedBytes] ?
+    "st Z+, r21\n" // (2) save %[data] back to memory and increment byte pointer
+    "cp r19, r24\n" // (1) %[len] == %[receivedBytes] ?
     "breq .L%=read_stop_bit\n" // (1/2) jump to end of the data
 
     ".L%=read_wait_for_high:\n"
@@ -173,11 +178,15 @@ void setup() {
     "brne .L%=read_wait_for_low\n" // (1/2) if the line is high then jump
     "dec r22\n" // (1) decrease timeout by 1
     "brne .L%=read_wait_for_high\n" // (1/2) loop if the counter isn't 0
-    ".L%=read_stop_bit:\n"
-    // want to wait for the last bit, to do this we get here with at most 21 bits in this byte
-    // TODO: need to do logic for command type
+    // TODO: what to do if we arrive here (never went high)
+    // maybe jump to the start 
+    "rjmp .L%=read_init_loop\n"
 
-    // we have to use more then 37 instructions to modify the data report, after that the gc will open the port to start reading
+
+    ".L%=read_stop_bit:\n"
+    // want to wait for the last bit, to do this we get here with at most 21 cycles left in this byte then 48 in the stop byte
+
+    // we have to use more then 69 instructions to modify the data report, after that the gc will open the port to start reading
     // may be smart to use 16 more instructions to gove 1us for the gc to open the port
 
     // start by loading the buffer into the 
@@ -187,84 +196,140 @@ void setup() {
     "ld r19, Z\n" // (2) load the data format we need to make into r19
 
     // this is technially not needed for some modifications but i need to use some cpu cycles
-    "mov r26, r14\n" // (1) X
-    "mov r27, r15\n" // (1) load the register for command
     "mov r30, r14\n" // (1) Z 
     "mov r31, r15\n" // (1) load the register for command
 
     // tho this is not always needed it is here anyway to wast time for the one case that it is not needed 
-
-    // TODO: need to check that these are incrementing to the correct registers
     // we need to modify at least [4] (in the x) and [5] in the Z
     "ld r25, Z+\n" // (2) Z = Z[1]
     "ld r25, Z+\n" // (2) Z = Z[2]
     "ld r25, Z+\n" // (2) Z = Z[3]
     "ld r25, Z+\n" // (2) Z = Z[4]
-    "ld r25, Z+\n" // (2) Z = Z[5]
 
-    "ld r25, X+\n" // (2) X = X[1]
-    "ld r25, X+\n" // (2) X = X[2]
-    "ld r25, X+\n" // (2) X = X[3]
-    "ld r25, X+\n" // (2) X = X[4]
-
-
-    "cpi r19,0x03\n" // (1) comand == 3 ?
-    "breq .L%=read_no_change\n" // (1/2) jump if true
-
-    "cpi r19,0x01\n" // (1) comand == 1 ?
-    "breq .L%=read_format_one\n" // (1/2) jump if true
-
-    // TODO: logic for other command types
-
-
-
-    ".L%=read_no_change:\n" // we have 31/37 cpu cycles done
-    "ldi r19, 0x01\n" // (1) indicate that we need to get new data
-    "ldi r19, 0x08\n" // (1) logic for other data types
-    // set the data buffer
-    "mov r30,r14\n" // (1) Z
-    "mov r31,r15\n" // (1) set as the data buffer
-    "rjmp .L%=send_data_setup\n" // (2) 37/37 cycles (perfect and no nops :D)
-
-    ".L%=read_format_one:\n" // we have 31/37 cpu cycles done
-    "ld r25, X\n" // (2) r25 = data[4]
-    "ld r24, Z+\n" // (2) r24 = data[5], Z = data[6]
+    // we have r20 - r25 free (r19 is comand[1])
+    // r20 = buff[4] (temp), r21 = buff[5], r22 = buff[6], r23 = buff[7], r24 = buff 4 + 5 combo, r25 = buff 6 + 7 combo
+    "ld r20, Z+\n" // (2) r20 = buff[4], incrment z pointer
+    "ld r21, Z+\n" // (2) r21 = buff[5], incrment z pointer
+    "ld r22, Z+\n" // (2) r22 = buff[6], incrment z pointer
+    "ld r23, Z\n" // (2) r23 = buff[7]
+    // we now have z registers as registers to dump in
+    "lsr r20\n" // (1) shift right by 1
+    "lsr r20\n" // (1) shift right by 1 [2]
+    "lsr r20\n" // (1) shift right by 1 [3]
+    "lsr r20\n" // (1) shift right by 1 [4]
+    "mov r24, r21\n" // (1)
+    "andi r24, 0xF0\n" // (1) limit data[5] to be only the top 4 bits
+    "or r24, r20\n" // (1) top for bytes of buffer[5] then top 4 bytes of buffer[4] (todo: check if need to swap)
+    "mov r25, r22\n" // (1) 
     "lsr r25\n" // (1) shift right by 1
     "lsr r25\n" // (1) shift right by 1 [2]
     "lsr r25\n" // (1) shift right by 1 [3]
     "lsr r25\n" // (1) shift right by 1 [4]
-    "andi r24, 0xF0\n" // (1) limit data[5] to be only the top 4 bits
-    "or r25, r24\n" // (1) top for bytes of buffer[5] then top 4 bytes of buffer[4] (ik its weird, just going of what i can see in nikehood library)
-    "st X+, r25\n" // store in X[4] and incrmeent X to buffer[5]
-    "ld r25, Z+\n" // (2) r24 = data[6], Z = data[7]
-    "ld r24, Z\n" // (2) r25 = data[7]
-    // TODO: consolt already implemented shit (thats not in asm)
-    
+    "mov r20, r23\n" // (1)
+    "andi r20, 0xF0\n" // (1) limit data[5] to be only the top 4 bits
+    "or r25, r20\n" // (1) top for bytes of buffer[5] then top 4 bytes of buffer[4] (todo: check if need to swap)
+    "ldi r21, 0x00\n" // (1) set r25 as a 0 register
+
+    "mov r30, r14\n" // (1) Z
+    "mov r31, r15\n" // (1) load the register for command
+    "ld r25, Z+\n" // (2) Z = Z[1]
+    "ld r25, Z+\n" // (2) Z = Z[2]
+    "ld r25, Z+\n" // (2) Z = Z[3]
+    "ld r25, Z+\n" // (2) Z = Z[4]
 
 
-    // TODO: inplement sudocode
-    // copy Z to 25, increment Z
-    // set X to 25, increment x
-    // copy Z to 25, increment Z
-    // set X to 25, increment x
-    // set x to 0
-    // set Z and r19
+    // we have done 49/69 instructions before we can star sending // TODO update delays
+
+    // we have 4 cycles at the end 
 
 
+    "cpi r19,0x03\n" // (1) comand == 3 ?
+    "breq .L%=read_no_change\n" // (1/2) jump if true (56)
+
+    "cpi r19,0x01\n" // (1) comand == 1 ?
+    "breq .L%=read_format_one\n" // (1/2) jump if true (58)
+
+    "cpi r19,0x02\n" // (1) comand == 2 ?
+    "breq .L%=read_format_two\n" // (1/2) jump if true (60)
+
+    "cpi r19,0x02\n" // (1) comand == 4 ?
+    "breq .L%=read_format_four\n" // (1/2) jump if true (62) TODO: this
+
+    "andi r19, 0xF8\n" // (1) comand && 0xF8 == 0x00 ?
+    "breq .L%=read_format_other\n" // (1/2) jump if true (64) TODO: is this breq or brne
+
+
+    ".L%=read_no_change:\n" // we have 52/69 cpu cycles done
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
     "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "mov r30,r14\n" // (1) Z
     "mov r31,r15\n" // (1) set as the data buffer
+    "rjmp .L%=send_data_setup\n" // (2) 58/69 cycles 
+
+    ".L%=read_format_one:\n" // we have 31/37 cpu cycles done
+    "ldi r19, 0x01\n" // (1) indicate that we need to get new data
+    "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
+    "st Z+, r24\n" // (2) x = buffer[4] = r24
+    "st Z+, r22\n" // (2) x = buffer[5] = r22
+    "st Z+, r23\n" // (2) x = buffer[6] = r23
+    "st Z+, r21\n" // (2) x = buffer[7] = 0x00
+    "mov r30,r14\n" // (1) Z
+    "mov r31,r15\n" // (1) set as the data buffer
+    "rjmp .L%=send_data_setup\n" // 43/37
+
+
+    ".L%=read_format_two:\n" // we have 33/37 cpu cycles done
+    "ldi r19, 0x01\n" // (1) indicate that we need to get new data
+    "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
+    "st Z+, r24\n" // (2) x = buffer[4] = r24
+    "st Z+, r25\n" // (2) x = buffer[5] = r22
+    "st Z+, r21\n" // (2) x = buffer[6] = 0x00
+    "st Z+, r21\n" // (2) x = buffer[7] = 0x00
+    "mov r30,r14\n" // (1) Z
+    "mov r31,r15\n" // (1) set as the data buffer
     "rjmp .L%=send_data_setup\n"
 
-  
+
+    ".L%=read_format_four:\n" // we have 35/37 cpu cycles done
+    "ldi r19, 0x01\n" // (1) indicate that we need to get new data
+    "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
+    "ld r20, Z+\n" // (2) increment Z buffer (r20 is dummy)
+    "ld r20, Z+\n" // (2) Z = buffer[5] = r21
+    "st Z+, r21\n" // (2) Z = buffer[6] = 0x00
+    "st Z+, r21\n" // (2) Z = buffer[7] = 0x00
+    "mov r30,r14\n" // (1) Z
+    "mov r31,r15\n" // (1) set as the data buffer
+    "rjmp .L%=send_data_setup\n"
+
+    ".L%=read_format_other:\n" // we have 35/37 cpu cycles done
+
+    "ldi r19, 0x01\n" // (1) indicate that we need to get new data
+    "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
+    "ld r20, Z+\n" // (2) increment Z buffer (r20 is dummy)
+    "st Z+, r21\n" // (2) Z = buffer[5] = r21
+    "st Z+, r25\n" // (2) Z = buffer[6] = r25
+    "st Z+, r21\n" // (2) Z = buffer[7] = 0x00
+    "mov r30,r14\n" // (1) Z
+    "mov r31,r15\n" // (1) set as the data buffer
+    "rjmp .L%=send_data_setup\n"
 
 
     // should be high or turning high rn, 
     // we return the number of bits filled 
-    ".L%=read_program_exit:\n"
+    ".L%=read_program_exit:\n" // TODO: time out 
     // if len = 1 then logic
+    "cpi r24,0x01\n" // (1) comand == 1 ?
+    "brne .L%=read_init_loop\n" // (1/2) jump if true 
 
+    "mov r30, r8\n" // (1) Z
+    "mov r31, r9\n" // (1) load the register for command
+    "ld r19, Z+\n" // (1) r19 = Z[1]
+
+    "cpi r19,0x03\n" // (1) comand == 3 ?
+    "breq .L%=read_no_change\n" // (1/2) jump if true (56)
+
+    "cpi r19,0x01\n" // (1) comand == 1 ?
+    "breq .L%=read_format_one\n" // (1/2) jump if true (58)
     
   
 
@@ -312,14 +377,14 @@ void setup() {
     "brcc .L%=send_data_zero_bit\n" // (1/2) branch if carry is cleared
     "nop\n" // (1) (16)
     "st X,r21\n" // (2) set the line high again
-    "rjmp .L%=_finish_bit\n" // (2) jumps to end of the bit
+    "rjmp .L%=send_data_finish_bit\n" // (2) jumps to end of the bit
 
     ".L%=send_data_zero_bit:\n" 
     // leave low, need to wait 4 cycles to sync up
     "nop\nnop\nnop\nnop\n" //(4)
 
 
-    ".L%=_finish_bit:\n" 
+    ".L%=send_data_finish_bit:\n" 
     // wait 28 cycles for 2us
     "nop\nnop\nnop\nnop\nnop\n" //(5) 
     "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
@@ -357,7 +422,7 @@ void setup() {
     "mov r30,r0\n" // (1) x
     "mov r31,r1\n" // (1) set the register modeport
     "ld r25, Z\n" // (2) load portmode into r25
-    "mov r16, r24" // (1) 
+    "mov r16, r24\n" // (1) 
     "com r24\n" // (1)
     "and r25, r24\n" // (1) determin the new portmode
     "nop\n" // (1) 8/8 nops
@@ -371,7 +436,7 @@ void setup() {
     "nop\nnop\n" //(2) (14)
     "st X,r21\n" // (2) set the line high again
     "st Z,r25\n" // (2) set the portmode to input    
-    "rjmp read_console_loop\n" // TODO
+    "rjmp .L%=read_console_loop\n"
 
     ".L%=send_data_prep_read_stream:\n"
     "ldi r19, 0x08\n" // (1) set the len of the data to read to be 1
@@ -381,114 +446,9 @@ void setup() {
     "mov r27, 7\n" // (1) set x as the in port for comm
     "mov r30, r14\n" // (1) Z
     "mov r31, r15\n" // (1) set the z as the buffer poiter
-    "rjmp read_stream\n"
+    "rjmp .L%=read_stream\n"
     // sets r19 = len, X = inport comm, Z = buffer
   // Clobbers: r23, r24, r25
-
-
-
-    ".L%=read_data:\n" //TODO: convert into asm with registers not names
-  // input: r19, len of data to read
-    // we need to set the port to input (9)
-    "mov r26,r0\n" // (1) x
-    "mov r27,r1\n" // (1) set the register modeport
-    "mov r25,r16\n" // (1) set the register 25 to be the bitmask for console
-    "com r25\n" // (1) bitwise invers of bitmask
-    "ld r24, X\n" // (2) load x into r24
-    "and r25, r24\n" // (1) determin the new portmode
-    "st X, r25\n" // (2) store the bitmask
-
-    // set the X to be the inport
-    "mov r26, r4\n" // (1) X 
-    "mov r27, r5\n" // (1) load the register for inport console
-
-
-     "ldi %[waitloop1],0x00\n" // (1)
-        "ldi %[receivedBytes],0x00\n" // (1) yet to get a byte
-        "ldi %[bitCount],0x08\n" // (1) set bitcount to 8 bits
-
-
-        ".L%=_externel_loop:\n"
-        // start the internal loop to loop 256 times
-        //"ldi %[data],0x00\n" // (1)
-
-        ".L%=_internel_loop1:\n"
-        "ld %[inputVal], %a[inPortConsole]\n" // (2) reads pin then saves to input value 
-        "and %[inputVal], %[bitMaskConsole]\n" // (1) compares the input value to the bitmask
-        "breq .L%=_found_low\n" // (1/2) jumps if the value is 0 from the and (the result was low)
-        //"dec %[data]\n" // (1) decrease loop iterations by 1
-        //"brne .L%=_internel_loop1\n" // (1/2) loop if the counter isn't 0
-        "rjmp .L%=_internel_loop1\n"
-
-        // checks the pin every 7 cycles
-        ".L%=_wait_for_low:\n"
-        "ld %[inputVal], %a[inPortConsole]\n" // (2) reads pin then saves to input value 
-        "and %[inputVal], %[bitMaskConsole]\n" // (1) compares the input value to the bitmask
-        "breq .L%=_found_low\n" // (1/2) jumps if the value is 0 from the and (the result was low)
-        "dec %[waitloop1]\n" // (1) 
-        "brne .L%=_wait_for_low\n" // (1/2) loop if the counter isn't 0
-        // timeout if the loop did not find low
-        //"ldi %[receivedBytes],0x40\n"
-        "rjmp .L%=_program_exit\n" // (2) jump to end
-        
-        // logic for identifying the data 
-        // worst case it has been 8 instructions since last pin check and it takes 5 instrctions to jump here
-        // this means that between 3 instrctions and 11 instructions left in the start of this bit
-        ".L%=_found_low:\n"
-        // to check in the most optimal way we want to check in the middle of the 32 bits of data, 
-        // this will be between the 12 and the 20th bit. 
-        // if the 3 left goes to the 20 then we need 23 nops, meaning that the one with 11 left checks on the 12th cycle as e wanted. 
-        "nop\nnop\nnop\nnop\nnop\n" //(5)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
-        "nop\n" //(1) (21)
-        "lsl %[data]\n" // (1) moves data recived left so the new data can fit in 
-        "ldi %[waitloop1],%[timeout_length]\n" // (1) (23) set the timeout to 16 loops, if it has not gone high then there is error, do it in advance
-
-        // logic to check what the bit is. 
-        ".L%=_read_bit:\n"
-        "ld %[inputVal], %a[inPortConsole]\n" // (2) reads pin then saves to input value (happens before the 2 cycles)
-        "and %[inputVal], %[bitMaskConsole]\n" // (1) compares the input value to the bitmask
-        "breq .L%=_decrement_bit\n" // (1/2) jumps if the value is 0 from the and (the result was low)
-        "sbr %[data],0x01\n" // (1) sets the first bit in the data to be a 1
-        ".L%=_decrement_bit:\n"
-        "dec %[bitCount]\n" // (1) decrement 1 from our bit counter
-        "brne .L%=_wait_for_high\n" // (1/2) branch if we've not received the full byte
-        
-        "inc %[receivedBytes]\n" // (1) increase byte count
-        "ldi %[bitCount],0x08\n" // (1) set bitcount to 8 bits
-        "st %a[buff]+,%[data]\n" // (2) save %[data] back to memory and increment byte pointer
-        "cp %[len],%[receivedBytes]\n" // (1) %[len] == %[receivedBytes] ?
-        "breq .L%=_stop_bit\n" // (1/2) jump to w
-        
-        ".L%=_wait_for_high:\n"
-        "ld %[inputVal], %a[inPortConsole]\n" // (2) read the pin
-        "and %[inputVal], %[bitMaskConsole]\n" // (1) compare pinstate with bitmask
-        "brne .L%=_wait_for_low\n" // (1/2) if the line is high then jump
-        "dec %[waitloop1]\n" // (1) decrease timeout by 1
-        "brne .L%=_wait_for_high\n" // (1/2) loop if the counter isn't 0
-        //"ldi %[receivedBytes],0x50\n"
-        ".L%=_stop_bit:\n"
-        // want to wait for the last bit, to do this we get here with at most 21 bits in this byte , 
-        "nop\nnop\nnop\nnop\nnop\n" //(5)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
-        "nop\n" //(3) (21)
-        // now we want to wait the 16 cycles for the last low to end
-        "nop\nnop\nnop\nnop\nnop\n" //(5)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (10)
-        "nop\nnop\nnop\nnop\nnop\n" //(5) (15)
-        "nop\n" //(3) (16)
-        
-        // should be high or turning high rn, 
-        // we return the number of bits filled 
-        ".L%=_program_exit:\n"
-
-
-  // clobbers
-
 
 
     ".L%=read_stream_ensure_read:\n"
@@ -540,7 +500,7 @@ void setup() {
 
 
     ".L%=read_stream_wait_prebyte:\n"
-    "ldi r24,0x10\n" /// (1)
+    "ldi r24, 0x10\n" /// (1)
     // logic to wait for line to go low
     ".L%=read_stream_wait_high_prebyte:\n"
     "ld r25, X\n" // (2) reads pin then saves to input value 
@@ -610,7 +570,7 @@ void setup() {
     "ld r22, X\n" // (2)
     "and r22, r18\n" // (1)
     "or r23, r22\n" // (1)
-    "st Z+,r23\n" // (2) save %[data] back to memory and increment byte pointer
+    "st Z+, r23\n" // (2) save %[data] back to memory and increment byte pointer
     "dec r19\n" // (1) 
     "breq .L%=read_stream_exit\n" // (1/2) loop if the counter isn't 0
     "rjmp .L%=read_stream_wait_prebyte\n" // (2)
@@ -627,23 +587,7 @@ void setup() {
     //[bitMaskStatus] "d" (bitMaskStatus),
     //[bitMaskData] "d" (bitMaskData),
     : [setup_data] "X" (setup_data)
-    //[modePortConsole_lower] "l" (modePortConsole_lower), // 0
-    //[modePortConsole_upper] "l" (modePortConsole_upper), // 1
-    //[outPortConsole_lower] "l" (outPortConsole_lower), // 2
-    //[outPortConsole_upper] "l" (outPortConsole_upper), // 3
-    //[inPortConsole_lower] "l" (inPortConsole_lower), // 4
-    //[inPortConsole_upper] "l" (inPortConsole_upper), // 5
-    //[inPortComm_lower] "l" (inPortComm_lower), // 6
-    //[inPortComm_upper] "l" (inPortComm_upper), // 7
-    //[command_lower] "l" (command_lower), // 8
-    //[command_upper] "l" (command_upper), // 9
-    //[contoller_init_lower] "l" (contoller_init_lower), // 10 
-    //[contoller_init_upper] "l" (contoller_init_upper), // 11
-    //[initaldata_lower] "l" (initaldata_lower), // 12
-    //[initaldata_upper] "l" (initaldata_upper), // 13
-    //[buffer_lower] "l" (buffer_lower), // 14
-    //[buffer_upper] "l" (buffer_lower) // 15
-    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r24", "r25", "r30", "r31"
+    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r30", "r31"
   );
 }
 
