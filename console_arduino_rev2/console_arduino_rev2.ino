@@ -1,8 +1,47 @@
+// If you wish to use different ports then you need to ensure that the portdata 1 -> 4 are all on the same buss and are the lower 4 bits
+// if you ish to use the upper 4 bits then you have a bit of editing to do, i have labled eveythng i have done to the best of my ability so
+// i hope this is understandabe
+// 
+// I will include some basic sudocode at the end of the file to provide a quick overview of the assembly, i was having problems with timings and 
+// the code that i did not write in assmebly taking to long (i tested reading the data and seeing how closly i can send two get requests and timed the delay)
+// matmamatically the assembly wont xceed the delay needed so either the compiler was slow (i hope not) or the compiler geting readdy fro inline assembly takes ages 
+// (ages being a coupl us), hence i figgured thata i can just do it myself
+
+// i do not use the y register in the asembly since compiler did not like me passing it in 
+// (i assume that is bc it is a link to the neviroment vairables that are moved to ram while the inline asembly runs)
+
+// i know that writing code on a more powerfuk hardwhere may be cheaper when you scale above a point, i was thinking of redoing this on a pi when i get one
+// it should not be too hard to translate and depending on th enumber of gpio pins on it i may be able to hook up 16 consles to one pi. 
+// if this is something you are intrested in let me know and i may start on it sooner, i have some other projects i want to work on like analising the gamecube link cable 
+// and working out how the data is transfered from that to the pokemon box ruby and sapphire. If this works i may be able to use a similar program on the 
+// pi to make the startup of multiple saves faster. Eh thats beyon the scope of the project but please let me know if this is somrthing you want
+
+// another thing i wan to look into if i get the pi working is i may setup a program to swap what console your input is going to, if i do this i can see this having uses for
+// more then pokemon 
+
+
+// if you think any of the work i have done infringes on anyone elses ip then let me know and ill rectify the situation. I do not suport piracy and this is designed to only work with offical contollers 
+// but i may make some ports from the offical contoller to a compyter soon to play pirated games on the pc, idk tho
+
+// thoughts if i can work out how to put images on a gamecube if i can setup a pc to play the emulator on the gamecube?? 
+// smth i need to look into :)
+
+
+// - gba video playing
+// - gba output buttons
+// pi multi system
+// pi input swap
+
+// can i make a basic interface in the pi that allows button mapping and hdmi out through use of a keyboard? 
+// this will be useful for loading scripts and allowing different profiles to be used for different games
+
+
+
 #define CONSOLE 4
 
 
+
 // these cannot be changed without alterting the code, just declare them here so they are knowen
-// make sure these are all on the same port on your board
 #define PORTCONDITION 12 // status of the data is in portdata TODO: work out a better pin, if memory is a problem put in same buss
 #define PORTDATA1 8 // data being transfered
 #define PORTDATA2 9 // data being transfered
@@ -100,15 +139,15 @@ void setup() {
     "ld r17, X+\n" // bitmask status
     "ld r18, X+\n" // bitmask data
 
-    "mov r26,r6\n"
-    "mov r27,r7\n"
-    "mov r30, r12\n"
-    "mov r31, r13\n"
-    "ldi r19, 0x08\n"
-    "rjmp .L%=read_stream_ensure_read\n"
+    "mov r26,r6\n" // X
+    "mov r27,r7\n" // In port com
+    "mov r30, r12\n" // Z
+    "mov r31, r13\n" // inital data
+    "ldi r19, 0x08\n" // read 8 bytes
+    "rjmp .L%=read_stream_ensure_read\n" // ensure that we read the data
 
     // read and send loop: no inputs
-    ".L%=read_console_loop:\n" 
+    ".L%=read_console_loop:\n" // todo: end of this code hide
   // inputs nothing
     // r19 is max len
     // r21 is data
@@ -153,7 +192,7 @@ void setup() {
     "nop\nnop\nnop\nnop\nnop\n" //(5) (20)
     "nop\n" //(1) (21)
     "lsl r21\n" // (1) moves data recived left so the new data can fit in 
-    "ldi r22,0x10\n" // (1) (23) set the timeout to 16 loops
+    "ldi r22,0x10\n" // (1) (23) set the timeout to 16 loops, 16 * 8 = 128 cycles, or 8us
 
 
     // logic to check what the bit is. 
@@ -178,7 +217,6 @@ void setup() {
     "brne .L%=read_wait_for_low\n" // (1/2) if the line is high then jump
     "dec r22\n" // (1) decrease timeout by 1
     "brne .L%=read_wait_for_high\n" // (1/2) loop if the counter isn't 0
-    // TODO: what to do if we arrive here (never went high)
     // maybe jump to the start 
     "rjmp .L%=read_init_loop\n"
 
@@ -238,35 +276,38 @@ void setup() {
     "ld r25, Z+\n" // (2) Z = Z[4]
 
 
-    // we have done 49/69 instructions before we can star sending // TODO update delays
+    // we have done 50/69 instructions before we can star sending
 
     // we have 4 cycles at the end 
 
 
     "cpi r19,0x03\n" // (1) comand == 3 ?
-    "breq .L%=read_no_change\n" // (1/2) jump if true (56)
+    "breq .L%=read_no_change\n" // (1/2) jump if true (52)
 
     "cpi r19,0x01\n" // (1) comand == 1 ?
-    "breq .L%=read_format_one\n" // (1/2) jump if true (58)
+    "breq .L%=read_format_one\n" // (1/2) jump if true (54)
 
     "cpi r19,0x02\n" // (1) comand == 2 ?
-    "breq .L%=read_format_two\n" // (1/2) jump if true (60)
+    "breq .L%=read_format_two\n" // (1/2) jump if true (56)
 
     "cpi r19,0x02\n" // (1) comand == 4 ?
-    "breq .L%=read_format_four\n" // (1/2) jump if true (62) TODO: this
+    "breq .L%=read_format_four\n" // (1/2) jump if true (58) 
 
     "andi r19, 0xF8\n" // (1) comand && 0xF8 == 0x00 ?
-    "breq .L%=read_format_other\n" // (1/2) jump if true (64) TODO: is this breq or brne
+    "breq .L%=read_format_other\n" // (1/2) jump if true (60) TODO: is this breq or brne
+
+    "rjmp .L%=read_console_loop\n" // (2) jump to start and wait since the data we got is wrong to the best of my knoweledge
 
 
-    ".L%=read_no_change:\n" // we have 52/69 cpu cycles done
+    ".L%=read_no_change:\n" // we have 53/69 cpu cycles done
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
     "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "mov r30,r14\n" // (1) Z
     "mov r31,r15\n" // (1) set as the data buffer
-    "rjmp .L%=send_data_setup\n" // (2) 58/69 cycles 
+    "rjmp .L%=send_data_setup\n" // (2) 59/69 cycles 
 
-    ".L%=read_format_one:\n" // we have 31/37 cpu cycles done
+
+    ".L%=read_format_one:\n" // we have 55/69 cpu cycles done
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
     "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "st Z+, r24\n" // (2) x = buffer[4] = r24
@@ -275,10 +316,10 @@ void setup() {
     "st Z+, r21\n" // (2) x = buffer[7] = 0x00
     "mov r30,r14\n" // (1) Z
     "mov r31,r15\n" // (1) set as the data buffer
-    "rjmp .L%=send_data_setup\n" // 43/37
+    "rjmp .L%=send_data_setup\n" // 69/69
 
 
-    ".L%=read_format_two:\n" // we have 33/37 cpu cycles done
+    ".L%=read_format_two:\n" // we have 57/69 cpu cycles done
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
     "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "st Z+, r24\n" // (2) x = buffer[4] = r24
@@ -287,14 +328,14 @@ void setup() {
     "st Z+, r21\n" // (2) x = buffer[7] = 0x00
     "mov r30,r14\n" // (1) Z
     "mov r31,r15\n" // (1) set as the data buffer
-    "rjmp .L%=send_data_setup\n"
+    "rjmp .L%=send_data_setup\n" // 71/69
 
 
     ".L%=read_format_four:\n" // we have 35/37 cpu cycles done
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
     "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "ld r20, Z+\n" // (2) increment Z buffer (r20 is dummy)
-    "ld r20, Z+\n" // (2) Z = buffer[5] = r21
+    "ld r20, Z+\n" // (2) increment z buffer (r20 is dummy)
     "st Z+, r21\n" // (2) Z = buffer[6] = 0x00
     "st Z+, r21\n" // (2) Z = buffer[7] = 0x00
     "mov r30,r14\n" // (1) Z
@@ -302,7 +343,6 @@ void setup() {
     "rjmp .L%=send_data_setup\n"
 
     ".L%=read_format_other:\n" // we have 35/37 cpu cycles done
-
     "ldi r19, 0x01\n" // (1) indicate that we need to get new data
     "ldi r22, 0x08\n" // (1) we are going to send 8 bytes of data
     "ld r20, Z+\n" // (2) increment Z buffer (r20 is dummy)
@@ -316,21 +356,44 @@ void setup() {
 
     // should be high or turning high rn, 
     // we return the number of bits filled 
-    ".L%=read_program_exit:\n" // TODO: time out 
+    ".L%=read_program_exit:\n" // TODO: time out - 
     // if len = 1 then logic
     "cpi r24,0x01\n" // (1) comand == 1 ?
-    "brne .L%=read_init_loop\n" // (1/2) jump if true 
+    "brne .L%=read_console_loop\n" // (1/2) jump if true 
 
     "mov r30, r8\n" // (1) Z
     "mov r31, r9\n" // (1) load the register for command
     "ld r19, Z+\n" // (1) r19 = Z[1]
 
-    "cpi r19,0x03\n" // (1) comand == 3 ?
-    "breq .L%=read_no_change\n" // (1/2) jump if true (56)
+    "cpi r19,0x00\n" // (1) comand == 0 ?
+    "breq .L%=send_setup_init\n" // (1/2) jump if true 
 
-    "cpi r19,0x01\n" // (1) comand == 1 ?
-    "breq .L%=read_format_one\n" // (1/2) jump if true (58)
-    
+    "cpi r19,0xFF\n" // (1) comand == FF ?
+    "breq .L%=send_setup_init\n" // (1/2) jump if true 
+
+    "cpi r19,0x41\n" // (1) comand == 41 ?
+    "breq .L%=send_inital_data\n" // (1/2) jump if true 
+
+    "cpi r19,0x41\n" // (1) comand == 42 ?
+    "breq .L%=send_inital_data\n" // (1/2) jump if true
+
+
+    "rjmp .L%=read_init_loop\n" // (2) jump to start of the  
+
+
+    ".L%=send_setup_init:\n" // we have x cpu cycles done
+    "ldi r19, 0x00\n" // (1) indicate that we dont need new data
+    "ldi r22, 0x03\n" // (1) we are going to send 3 bytes of data
+    "mov r30,r10\n" // (1) Z
+    "mov r31,r11\n" // (1) set as the initalisation data buffer
+    "rjmp .L%=send_data_setup\n"
+
+    ".L%=send_inital_data:\n" // we have x cpu cycles done
+    "ldi r19, 0x00\n" // (1) indicate that we dont need new data
+    "ldi r22, 0x0A\n" // (1) we are going to send 3 bytes of data
+    "mov r30,r12\n" // (1) Z
+    "mov r31,r13\n" // (1) set as the initalisation data buffer
+    "rjmp .L%=send_data_setup\n"
   
 
 
