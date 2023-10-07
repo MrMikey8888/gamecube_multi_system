@@ -51,12 +51,6 @@
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600);
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-  //Serial.println("test");
 
   uint8_t setup_data[19];
   setup_data[16] = digitalPinToBitMask(CONSOLE);
@@ -115,18 +109,6 @@ void loop() {
 
   // make into a list
   // load registers when entering the asm
-  Serial.println(initaldata[0], BIN);
-  Serial.println(initaldata[1], BIN);
-  Serial.println(initaldata[2], BIN);
-  Serial.println(initaldata[3], BIN);
-  Serial.println(initaldata[4], BIN);
-  Serial.println(initaldata[5], BIN);
-  Serial.println(initaldata[6], BIN);
-  Serial.println(initaldata[7], BIN);
-  Serial.println(initaldata[8], BIN);
-  Serial.println(initaldata[9], BIN);
-
-
 
   // we dont want to make any vairables here since we going to write everything in asm
   // we only compile this way since i dont know how to get the memory adress of the ports in asm
@@ -170,6 +152,7 @@ void loop() {
     "mov r27,r7\n"   // (1) set as the outport console
     "ld r21, X\n"    // (2) load outport console into r21
     "or r21, r16\n"  // (1) r21 is the port high
+    "st X, r21\n"     // (2) store the portmode for the input
 
 
     "mov r26,r6\n"                        // X
@@ -682,16 +665,9 @@ void loop() {
     // outputs
     :
     : [setup_data] "X"(setup_data)
-    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r30", "r31");
-  Serial.println(initaldata[0], BIN);
-  Serial.println(initaldata[1], BIN);
-  Serial.println(initaldata[2], BIN);
-  Serial.println(initaldata[3], BIN);
-  Serial.println(initaldata[4], BIN);
-  Serial.println(initaldata[5], BIN);
-  Serial.println(initaldata[6], BIN);
-  Serial.println(initaldata[7], BIN);
-  Serial.println(initaldata[8], BIN);
-  Serial.println(initaldata[9], BIN);
-  //Serial.println(initaldata[], Bin);
+    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r30", "r31"
+  );
+}
+
+void loop() {
 }
