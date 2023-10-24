@@ -52,6 +52,7 @@
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
+  Serial.println(digitalPinToBitMask(PORTCONDITION), BIN);
 }
 
 void loop() {
@@ -60,16 +61,18 @@ void loop() {
   uint8_t setup_data[19];
   setup_data[16] = digitalPinToBitMask(CONSOLE);
   uint8_t portConsole = digitalPinToPort(CONSOLE);
-  uint16_t temp = portModeRegister(portConsole);
+  uint16_t temp = (uint16_t)portModeRegister(portConsole);
+  //Serial.println("temp");
+  //Serial.println(temp, HEX);
   setup_data[0] = temp;       // modePortConsole_lower
   setup_data[1] = temp >> 8;  // modePortConsole_upper
 
 
-  temp = portOutputRegister(portConsole);
+  temp = (uint16_t)portOutputRegister(portConsole);
   setup_data[2] = temp;       // outPortConsole_lower
   setup_data[3] = temp >> 8;  // outPortConsole_upper
 
-  temp = portInputRegister(portConsole);
+  temp = (uint16_t)portInputRegister(portConsole);
   setup_data[4] = temp;       // inPortConsole_lower
   setup_data[5] = temp >> 8;  // inPortConsole_upper
 
@@ -79,12 +82,12 @@ void loop() {
   setup_data[18] = 0x0F;  // declared like this insted of writing it manually so if you want to change it you can find where it is used
 
 
-  temp = portInputRegister(portData);
+  temp = (uint16_t)portInputRegister(portData);
   setup_data[6] = temp;       // inPortComm_lower
   setup_data[7] = temp >> 8;  // inPortComm_upper
-  Serial.println("location");
-  Serial.println(setup_data[6], HEX);
-  Serial.println(setup_data[7], HEX);
+  //Serial.println("location");
+  //Serial.println(setup_data[6], HEX);
+  //Serial.println(setup_data[7], HEX);
   
 
   // set information pins to input
@@ -96,68 +99,84 @@ void loop() {
   *portOutputRegister(portData) |= setup_data[18];
 
   uint8_t command[3] = { 0x00, 0x00, 0x00 };
-  temp = &command;
+  temp = (uint16_t)command;
   setup_data[8] = temp;       // command_lower
   setup_data[9] = temp >> 8;  // command_upper
 
   uint8_t contoller_init[3] = { 0x09, 0x00, 0x03 };
-  temp = &contoller_init;
+  temp = (uint16_t)contoller_init;
   setup_data[10] = temp;       // contoller_init_lower
   setup_data[11] = temp >> 8;  // contoller_init_upper
 
   // we set the upper 2 bytes to be correct here, i cba to do it in the asm block
-  uint8_t initaldata[10] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02 };
+  uint8_t initaldata[10] = { 0x00, 0x00, 0x00, 0xAA, 0x01, 0x02, 0x04, 0x08, 0x02, 0x02 };
   //Serial.println(initaldata[0], BIN);
-  Serial.println("start first print\n");
-  temp = &initaldata;
+  //Serial.println("start first print\n");
+  temp = (uint16_t)initaldata;
   setup_data[12] = temp;       // initaldata_lower
   setup_data[13] = temp >> 8;  // initaldata_upper
+  Serial.println("save locartion");
+  Serial.println(temp, HEX);
+  //temp = &initaldata[0];
+  //Serial.println(temp, HEX);
+  //temp = &initaldata[1];
+  //Serial.println(temp, HEX);
+  //Serial.println(setup_data[12], HEX);
+  //Serial.println(setup_data[13], HEX);
+
 
   uint8_t buffer[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-  temp = &buffer;
+  temp = (uint16_t)buffer;
   setup_data[14] = temp;       // buffer_lower
   setup_data[15] = temp >> 8;  // buffer_upper
 
   // make into a list
   // load registers when entering the asm
-  Serial.println(initaldata[0], BIN);
-  Serial.println(initaldata[1], BIN);
-  Serial.println(initaldata[2], BIN);
-  Serial.println(initaldata[3], BIN);
-  Serial.println(initaldata[4], BIN);
-  Serial.println(initaldata[5], BIN);
-  Serial.println(initaldata[6], BIN);
-  Serial.println(initaldata[7], BIN);
-  Serial.println(initaldata[8], BIN);
-  Serial.println(initaldata[9], BIN);
-  Serial.println("ram adress of the port register");
-  temp = portInputRegister(portData);
-  Serial.println(temp, HEX);
-  temp = setup_data[6];
-  temp = temp << 8;
-  temp = temp ^ setup_data[7];
-  Serial.println(temp, HEX);
+  //Serial.println(initaldata[0], BIN);
+  //Serial.println(initaldata[1], BIN);
+  //Serial.println(initaldata[2], BIN);
+  //Serial.println(initaldata[3], BIN);
+  //Serial.println(initaldata[4], BIN);
+  //Serial.println(initaldata[5], BIN);
+  //Serial.println(initaldata[6], BIN);
+  //Serial.println(initaldata[7], BIN);
+  //Serial.println(initaldata[8], BIN);
+  //Serial.println(initaldata[9], BIN);
+  //Serial.println("ram adress of the port register");
+  //temp = portInputRegister(portData);
+  //Serial.println(temp, HEX);
+  //temp = setup_data[6];
+  //temp = temp << 8;
+  //temp = temp ^ setup_data[7];
+  //Serial.println(temp, HEX);
+  //Serial.println(setup_data[6], HEX);
+  //Serial.println(setup_data[7], HEX);
+  //Serial.println(setup_data[17], BIN);
+  Serial.println("start setup dump");
+  Serial.println(setup_data[0], HEX);
+  Serial.println(setup_data[1], HEX);
+  Serial.println(setup_data[2], HEX);
+  Serial.println(setup_data[3], HEX);
+  Serial.println(setup_data[4], HEX);
+  Serial.println(setup_data[5], HEX);
   Serial.println(setup_data[6], HEX);
   Serial.println(setup_data[7], HEX);
-  Serial.println(setup_data[17], BIN);
+  Serial.println(setup_data[8], HEX);
+  Serial.println(setup_data[9], HEX);
+  Serial.println(setup_data[10], HEX);
+  Serial.println(setup_data[11], HEX);
+  Serial.println(setup_data[12], HEX);
+  Serial.println(setup_data[13], HEX);
+  Serial.println(setup_data[14], HEX);
+  Serial.println(setup_data[15], HEX);
+  Serial.println(setup_data[16], HEX);
+  Serial.println(setup_data[17], HEX);
+  Serial.println(setup_data[18], HEX);
+
   delay(100);
 
-  //asm volatile(
-  //  "; test\n"
-  //  "mov r26, %[a]\n"
-  //  "mov r27, %[b]\n"
-  //  "ldi r25, 0x64\n"
-  //  "st X, r25\n"
-//
-  //  :
-  //  : [a] "d"(setup_data[12]),
-  //  [b] "d"(setup_data[13])
-  //  : "r25", "r26", "r27"
-  //);
-  //Serial.println(initaldata[0], HEX);
-
-  uint8_t oldSREG = SREG;
-  cli();
+  //uint8_t oldSREG = SREG;
+  //cli();
 
   // we dont want to make any vairables here since we going to write everything in asm
   // we only compile this way since i dont know how to get the memory adress of the ports in asm
@@ -167,32 +186,61 @@ void loop() {
 
 
     // initalise all the data to be accesses quickly
-    "ld r0, X+\n"  // mode port
-    "ld r1, X+\n"
-    "ld r2, X+\n"  // out console
-    "ld r3, X+\n"
-    "ld r4, X+\n"  // in console
-    "ld r5, X+\n"
-    "ld r6, X+\n"  // im comm port
-    "ld r7, X+\n"
-    "ld r8, X+\n"  // command read
-    "ld r9, X+\n"
-    "ld r10, X+\n"  // initalisation for contoller
+    //"ld r0, %a[setup_data]+\n"  // mode port
+    //"ld r1, %a[setup_data]+\n"
+    //"ld r2, %a[setup_data]+\n"  // out console
+    //"ld r3, %a[setup_data]+\n"
+    //"ld r4, %a[setup_data]+\n"  // in console
+    //"ld r5, %a[setup_data]+\n"
+    //"ld r6, %a[setup_data]+\n"  // im comm port
+    //"ld r7, %a[setup_data]+\n"
+    //"ld r8, %a[setup_data]+\n"  // command read
+    //"ld r9, %a[setup_data]+\n"
+    //"ld r10, %a[setup_data]+\n"  // initalisation for contoller
+    //"ld r11, %a[setup_data]+\n"
+    //"ld r12, %a[setup_data]+\n"  // inital data
+    //"ld r13, %a[setup_data]+\n"
+    //"ld r14, %a[setup_data]+\n"  // buffer pointer
+    //"ld r15, %a[setup_data]+\n"
+    //"ld r16, %a[setup_data]+\n"  // bitmask console
+    //"ld r17, %a[setup_data]+\n"  // bitmask status
+    //"ld r18, %a[setup_data]\n"  // bitmask data
+
+    "mov r26, %A0\n"  // Load low byte of setup_data address into r26
+    "mov r27, %B0\n"  // Load high byte of setup_data address into r27
+    "ld r0,  X+\n"
+    "ld r1,  X+\n"
+    "ld r2,  X+\n"
+    "ld r3,  X+\n"
+    "ld r4,  X+\n"
+    "ld r5,  X+\n"
+    "ld r6,  X+\n"
+    "ld r7,  X+\n"
+    "ld r8,  X+\n"
+    "ld r9,  X+\n"
+    "ld r10, X+\n"
     "ld r11, X+\n"
-    "ld r12, X+\n"  // inital data
+    "ld r12, X+\n"
     "ld r13, X+\n"
-    "ld r14, X+\n"  // buffer pointer
+    "ld r14, X+\n"
     "ld r15, X+\n"
-    "ld r16, X+\n"  // bitmask console
-    "ld r17, X+\n"  // bitmask status
-    "ld r18, X\n"  // bitmask data
+    "ld r16, X+\n"
+    "ld r17, X+\n"
+    "ld r18, X \n"
+
 
 
     "mov r26,r6\n"                        // X
     "mov r27,r7\n"                        // In port com
     "mov r30, r12\n"                      // Z
     "mov r31, r13\n"                      // inital data
+    //"ldi r30, 0xD9\n"
+    //"ldi r31, 0x08\n"
+
     "ldi r19, 0x08\n"                     // read 8 bytes
+    "st Z+, r0\n"
+    "ldi r25, 0xAA\n"
+    "st Z, r25\n"
     "rjmp .L%=read_stream_ensure_read\n"  // ensure that we read the data
 
 
@@ -201,18 +249,18 @@ void loop() {
       // **logic to sunc up with the start of the data, not using timeouts**
       // used when there is not time sensitive code running
 
-      ".L%=read_stream_init_wait_low_loop_e:\n"
-      "ld r25,X\n"                               // (2) reads pin then saves to input value
-      "and r25, r17\n"                           // (1) compares the input value to the bitmask
-      "breq .L%=read_stream_init_wait_high_loop_e\n"  // (1/2) jumps if the value is 0 from the and (the result was low)
-      "rjmp .L%=read_stream_init_wait_low_loop_e\n"
-
-      //".L%=read_stream_init_wait_high_e:\n"
-      ".L%=read_stream_init_wait_high_loop_e:\n"
-      "ld r25,X\n"                            // (2) reads pin then saves to input value
-      "and r25, r17\n"                        // (1) compares the input value to the bitmask
-      "brne .L%=read_stream_start_reading\n"  // (1/2) jumps if the value is 0 from the and (the result was low)
-      "rjmp .L%=read_stream_init_wait_high_loop_e\n"
+      //".L%=read_stream_init_wait_low_loop_e:\n"
+      //"ld r25,X\n"                               // (2) reads pin then saves to input value
+      //"and r25, r17\n"                           // (1) compares the input value to the bitmask
+      //"breq .L%=read_stream_init_wait_high_loop_e\n"  // (1/2) jumps if the value is 0 from the and (the result was low)
+      //"rjmp .L%=read_stream_init_wait_low_loop_e\n"
+      //
+      ////".L%=read_stream_init_wait_high_e:\n"
+      //".L%=read_stream_init_wait_high_loop_e:\n"
+      //"ld r25,X\n"                            // (2) reads pin then saves to input value
+      //"and r25, r17\n"                        // (1) compares the input value to the bitmask
+      //"brne .L%=read_stream_start_reading\n"  // (1/2) jumps if the value is 0 from the and (the result was low)
+      //"rjmp .L%=read_stream_init_wait_high_loop_e\n"
     // clobbers:
 
   //  ".L%=read_stream:\n"  // start the function for readint he stream
@@ -326,12 +374,34 @@ void loop() {
 
 
     // outputs
-    :
-    : [setup_data] "X"(setup_data)
-    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r30", "r31"
+    : 
+    : "r" (setup_data)
+    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r25", "r26", "r27", "r30", "r31"
   );
-  
-  SREG = oldSREG;
+  delay(10);
+  Serial.println("after asm setup dump");
+  Serial.println(setup_data[0], HEX);
+  Serial.println(setup_data[1], HEX);
+  Serial.println(setup_data[2], HEX);
+  Serial.println(setup_data[3], HEX);
+  Serial.println(setup_data[4], HEX);
+  Serial.println(setup_data[5], HEX);
+  Serial.println(setup_data[6], HEX);
+  Serial.println(setup_data[7], HEX);
+  Serial.println(setup_data[8], HEX);
+  Serial.println(setup_data[9], HEX);
+  Serial.println(setup_data[10], HEX);
+  Serial.println(setup_data[11], HEX);
+  Serial.println(setup_data[12], HEX);
+  Serial.println(setup_data[13], HEX);
+  Serial.println(setup_data[14], HEX);
+  Serial.println(setup_data[15], HEX);
+  Serial.println(setup_data[16], HEX);
+  Serial.println(setup_data[17], HEX);
+  Serial.println(setup_data[18], HEX);
+
+  //SREG = oldSREG;
+  Serial.println("test");
   Serial.println(initaldata[0], BIN);
   Serial.println(initaldata[1], BIN);
   Serial.println(initaldata[2], BIN);
@@ -342,6 +412,6 @@ void loop() {
   Serial.println(initaldata[7], BIN);
   Serial.println(initaldata[8], BIN);
   Serial.println(initaldata[9], BIN);
-  delay(10);
+  delay(100);
   //Serial.println(initaldata[], Bin);
 }
