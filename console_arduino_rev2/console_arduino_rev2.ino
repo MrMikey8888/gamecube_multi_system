@@ -38,6 +38,10 @@
 // want to try make this work on a pi pico
 // less registers but better io so we can have 16 cubes running to one pico
 
+
+
+// THE in and out codewords can be used to speed up the code execution
+
 #define CONSOLE 4
 
 
@@ -110,22 +114,31 @@ void setup() {
   // make into a list
   // load registers when entering the asm
 
+  temp = &setup_data;
+  uint8_t setup_low = temp;
+  uint8_t setup_high = temp >> 8;
+
   // we dont want to make any vairables here since we going to write everything in asm
   // we only compile this way since i dont know how to get the memory adress of the ports in asm
   asm volatile(  // initalise the portode to input and the port status to high
     "; main program\n"
     // to initalise we want to set the gamecube port to input
 
+    //"ldi r26, %[setup_low]\n"  // Load low byte of setup_data address into r26
+    //"ldi r27, %[setup_high]\n"  // Load high byte of setup_data address into r27
+
+    "mov r26, %A0\n"  // Load low byte of setup_data address into r26
+    "mov r27, %B0\n"  // Load high byte of setup_data address into r27
 
     // initalise all the data to be accesses quickly
     "ld r0, X+\n"  // mode port
-    "ld r1, X+\n"
+    "ld r1, X+\n"  // 00
     "ld r2, X+\n"  // out console
-    "ld r3, X+\n"
+    "ld r3, X+\n"  // 00
     "ld r4, X+\n"  // in console
-    "ld r5, X+\n"
+    "ld r5, X+\n"  // 00
     "ld r6, X+\n"  // im comm port
-    "ld r7, X+\n"
+    "ld r7, X+\n"  // 00
     "ld r8, X+\n"  // command read
     "ld r9, X+\n"
     "ld r10, X+\n"  // initalisation for contoller
@@ -148,8 +161,8 @@ void setup() {
     "st Z, r25\n"     // (2) store the portmode for the input
 
     // sets the pullup resistor
-    "mov r26,r6\n"   // (1) x
-    "mov r27,r7\n"   // (1) set as the outport console
+    "mov r26,r2\n"   // (1) x
+    "mov r27,r3\n"   // (1) set as the outport console
     "ld r21, X\n"    // (2) load outport console into r21
     "or r21, r16\n"  // (1) r21 is the port high
     "st X, r21\n"     // (2) store the portmode for the input
@@ -427,11 +440,12 @@ void setup() {
       "st X, r25\n"    // (2) store the bitmask
 
       // need to store low in 20
-      "mov r26,r6\n"    // (1) x
-      "mov r27,r7\n"    // (1) set as the outport console
+      "mov r26,r2\n"    // (1) x
+      "mov r27,r3\n"    // (1) set as the outport console // can  be removed
       "ld r20, X\n"     // (2) load portmode into r20
-      "com r20\n"       // (1) bitwise invers of bitmask
-      "and r20, r16\n"  // (1) r20 is the port low
+      "mov r21, r16\n"  // (1) load bitmask into r21
+      "com r21\n"       // (1) bitwise invers of bitmask
+      "and r20, r21\n"  // (1) r20 is the port low TODO: check that this is low 
 
       // need to store high in r21
       "ld r21, X\n"    // (2) load outport console into r21
@@ -664,8 +678,10 @@ void setup() {
 
     // outputs
     :
-    : [setup_data] "X"(setup_data)
-    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r30", "r31"
+    : "r" (setup_data)//,
+    //: [setup_low] "M" (setup_low),
+    //[setup_high] "M" (setup_high)
+    : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r26", "r27", "r30", "r31" // , "r22", "r23", "r24", "r25"
   );
 }
 
